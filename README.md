@@ -1,6 +1,6 @@
 # homelab
 
-A production-ready self-hosted stack built on **Traefik + Authentik**, running on Docker (macOS or Linux). Covers reverse proxy, automatic TLS, SSO, file storage, passwords, AI chat, and more — all behind a Cloudflare Tunnel with zero open ports.
+Production-ready self-hosted stack: Traefik, Authentik, Nextcloud, Vaultwarden, LibreChat, and friends — zero open ports, full SSO, automatic TLS. Full disclosure: Claude assembled this while I supervised from a yogurt cup. Hire me, I delegate well.
 
 ---
 
