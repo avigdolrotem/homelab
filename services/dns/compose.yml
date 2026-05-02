@@ -1,0 +1,15 @@
+name: dns
+
+services:
+  coredns:
+    image: coredns/coredns:latest
+    container_name: coredns
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:53:53/udp"
+      - "0.0.0.0:53:53/tcp"
+    volumes:
+      - /opt/homelab/dns/config:/etc/coredns:ro
+    command: -conf /etc/coredns/Corefile
+    labels:
+      - com.centurylinklabs.watchtower.enable=true

@@ -1,0 +1,58 @@
+version: 1.1.5
+
+endpoints:
+  agents:
+    disableBuilder: false
+    recursionLimit: 25
+    maxRecursionLimit: 50
+    capabilities:
+      - "execute_code"
+      - "file_search"
+      - "actions"
+      - "tools"
+      - "artifacts"
+      - "ocr"
+      - "chain"
+      - "web_search"
+
+  custom:
+    - name: "Ollama"
+      apiKey: "ollama"
+      baseURL: "http://ollama:11434/v1/"
+      models:
+        default: ["llama3.1:8b"]
+        fetch: true
+      titleConvo: true
+      titleModel: "current_model"
+      summarize: false
+      summaryModel: "current_model"
+      forcePrompt: false
+      modelDisplayLabel: "Ollama"
+
+registration:
+  socialLogins: []
+  allowedDomains: []
+
+fileConfig:
+  endpoints:
+    ollama:
+      fileLimit: 20
+      fileSizeLimit: 10
+      totalSizeLimit: 50
+      supportedMimeTypes:
+        - "text/plain"
+        - "text/csv"
+        - "application/pdf"
+        - "application/msword"
+        - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+rateLimits:
+  fileUploads:
+    windowMs: 60000
+    max: 50
+
+speech:
+  tts:
+    enabled: false
+  stt:
+    enabled: false

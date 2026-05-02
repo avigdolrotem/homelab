@@ -1,0 +1,17 @@
+# yourdomain.com — resolve all subdomains to the server's LAN IP.
+# Traefik handles routing to the right service via Host header.
+# This enables LAN devices (and Tailscale-connected devices) to reach
+# services directly without going through Cloudflare.
+yourdomain.com {
+    file /etc/coredns/yourdomain.com.zone
+    log
+    errors
+    cache 60
+}
+
+# Everything else — forward to Cloudflare and Google DNS
+. {
+    forward . 1.1.1.1 8.8.8.8
+    cache 3600
+    errors
+}

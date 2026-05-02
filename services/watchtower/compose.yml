@@ -1,0 +1,38 @@
+name: watchtower
+
+services:
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      # Watchtower needs full socket access to pull images and recreate containers.
+      # Unlike Traefik, socket proxy is not sufficient here — Watchtower needs write access.
+      - /var/run/docker.sock:/var/run/docker.sock
+    secrets:
+      - smtp_password
+    environment:
+      # Match your Docker daemon API version: docker info | grep "API version"
+      - DOCKER_API_VERSION=1.47
+      # Only update containers that have the watchtower.enable=true label
+      - WATCHTOWER_LABEL_ENABLE=true
+      # Schedule: every Sunday at 03:00 (cron format: second minute hour dom month dow)
+      - WATCHTOWER_SCHEDULE=0 0 3 * * 0
+      # Remove old images after update to reclaim disk space
+      - WATCHTOWER_CLEANUP=true
+      # Suppress the startup notification (reduces noise)
+      - WATCHTOWER_NO_STARTUP_MESSAGE=true
+      # Email notifications for update events
+      - WATCHTOWER_NOTIFICATIONS=email
+      - WATCHTOWER_NOTIFICATION_EMAIL_FROM=you@yourdomain.com
+      - WATCHTOWER_NOTIFICATION_EMAIL_TO=you@yourdomain.com
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER=smtp.zoho.com   # Change to your SMTP host
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=587
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=you@yourdomain.com
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD_FILE=/run/secrets/smtp_password
+      - WATCHTOWER_NOTIFICATION_EMAIL_DELAY=2
+
+# Watchtower reuses the SMTP password secret from vaultwarden (same credential)
+secrets:
+  smtp_password:
+    file: /opt/homelab/secrets/vaultwarden_smtp_password

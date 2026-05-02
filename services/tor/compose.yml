@@ -1,0 +1,30 @@
+name: remote-tor
+
+services:
+  tor-browser:
+    image: domistyle/tor-browser:latest
+    container_name: tor-browser
+    platform: linux/amd64   # Required — no ARM image available
+    restart: unless-stopped
+    environment:
+      - TZ=Your/Timezone    # e.g. America/New_York, Europe/London
+      - DISPLAY_WIDTH=1920
+      - DISPLAY_HEIGHT=1080
+      - KEEP_APP_RUNNING=1
+    # No volumes — stateless by design.
+    # Sessions are not persisted. Each container restart = fresh Tor identity.
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tor.rule=Host(`tor.yourdomain.com`)
+      - traefik.http.routers.tor.entrypoints=websecure
+      - traefik.http.routers.tor.tls.certresolver=letsencrypt
+      # Authentik SSO — required; do not expose Tor without authentication
+      - traefik.http.routers.tor.middlewares=authentik-auth@file
+      - traefik.http.services.tor.loadbalancer.server.port=5800
+      - com.centurylinklabs.watchtower.enable=true
+
+networks:
+  traefik:
+    external: true

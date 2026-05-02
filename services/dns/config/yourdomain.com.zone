@@ -1,0 +1,14 @@
+$ORIGIN yourdomain.com.
+$TTL 60
+
+; SOA and NS records (required)
+@   IN SOA ns.yourdomain.com. admin.yourdomain.com. 2026010101 3600 1800 604800 60
+@   IN NS  ns.yourdomain.com.
+
+; Apex and nameserver — point to server's LAN IP
+@   IN A   YOUR_SERVER_LAN_IP
+ns  IN A   YOUR_SERVER_LAN_IP
+
+; Wildcard — ALL subdomains resolve to the server's LAN IP.
+; Traefik routes to the correct service based on the Host header.
+*   IN A   YOUR_SERVER_LAN_IP

@@ -1,0 +1,110 @@
+name: authentik
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  authentik-db:
+    image: postgres:16-alpine
+    container_name: authentik-db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authentik"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      # Docker secret used here for DB initialization — this works because
+      # postgres supports POSTGRES_PASSWORD_FILE natively (not Authentik's parser)
+      POSTGRES_PASSWORD_FILE: /run/secrets/authentik_pg_password
+    volumes:
+      - /opt/homelab/authentik/db:/var/lib/postgresql/data
+    networks:
+      - authentik-internal
+    secrets:
+      - authentik_pg_password
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  authentik-redis:
+    image: redis:7-alpine
+    container_name: authentik-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - authentik-internal
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # ── Server ──────────────────────────────────────────────────────────────────
+  authentik-server:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-server
+    command: server
+    restart: unless-stopped
+    depends_on:
+      authentik-db:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    # IMPORTANT: Use env_file, NOT individual __FILE env vars.
+    # Authentik 2025.x has a bug where AUTHENTIK_POSTGRESQL__PASSWORD__FILE is parsed
+    # as a 3-level nested key (postgresql → password → file) instead of "read value
+    # from file". This causes a TypeError crash on startup.
+    # Workaround: write actual secret values into authentik.env (chmod 600, gitignored).
+    # See docs/services/authentik.md for full explanation.
+    env_file:
+      - /opt/homelab/authentik/config/authentik.env
+    volumes:
+      - /opt/homelab/authentik/media:/media
+      - /opt/homelab/authentik/custom-templates:/templates
+    networks:
+      - traefik
+      - authentik-internal
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.authentik.rule=Host(`auth.yourdomain.com`)
+      - traefik.http.routers.authentik.entrypoints=websecure
+      - traefik.http.routers.authentik.tls.certresolver=letsencrypt
+      - traefik.http.services.authentik.loadbalancer.server.port=9000
+      # Monitor-only: Authentik upgrades sometimes require migration steps
+      - com.centurylinklabs.watchtower.monitor-only=true
+
+  # ── Worker ──────────────────────────────────────────────────────────────────
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-worker
+    command: worker
+    restart: unless-stopped
+    depends_on:
+      authentik-db:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    env_file:
+      - /opt/homelab/authentik/config/authentik.env
+    volumes:
+      - /opt/homelab/authentik/media:/media
+      - /opt/homelab/authentik/certs:/certs
+    networks:
+      - authentik-internal
+    labels:
+      - com.centurylinklabs.watchtower.monitor-only=true
+
+networks:
+  traefik:
+    external: true
+  authentik-internal:
+    name: authentik-internal
+    driver: bridge
+    internal: true   # Redis and DB are unreachable from outside this stack
+
+secrets:
+  authentik_pg_password:
+    file: /opt/homelab/secrets/authentik_pg_password

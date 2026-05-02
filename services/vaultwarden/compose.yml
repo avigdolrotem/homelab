@@ -1,0 +1,96 @@
+name: vaultwarden
+
+services:
+  vaultwarden-db:
+    image: postgres:16-alpine
+    container_name: vaultwarden-db
+    restart: unless-stopped
+    secrets:
+      - postgres_password
+    environment:
+      - POSTGRES_DB=vaultwarden
+      - POSTGRES_USER=vaultwarden
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    volumes:
+      - /opt/homelab/vaultwarden/db:/var/lib/postgresql/data
+    networks:
+      - vaultwarden-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaultwarden"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      # monitor-only: DB schema changes require coordinated app upgrade
+      - com.centurylinklabs.watchtower.enable=true
+      - com.centurylinklabs.watchtower.monitor-only=true
+
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    depends_on:
+      vaultwarden-db:
+        condition: service_healthy
+    secrets:
+      - vaultwarden_admin_token
+      - vaultwarden_smtp_password
+    # DATABASE_URL lives in vaultwarden.env (contains the DB password)
+    env_file:
+      - /opt/homelab/vaultwarden/config/vaultwarden.env
+    environment:
+      - ADMIN_TOKEN_FILE=/run/secrets/vaultwarden_admin_token
+      - DOMAIN=https://passwords.yourdomain.com
+      - SENDS_ALLOWED=true
+      - EMERGENCY_ACCESS_ALLOWED=true
+      - WEB_VAULT_ENABLED=true
+      - SIGNUPS_ALLOWED=false          # Disable open registration
+      - SIGNUPS_VERIFY=true            # Email verification for invited users
+      - SIGNUPS_DOMAINS_WHITELIST=yourdomain.com
+      - SMTP_HOST=smtp.zoho.com        # Change to your SMTP provider
+      - SMTP_FROM=you@yourdomain.com
+      - SMTP_PORT=587
+      - SMTP_SECURITY=starttls
+      - SMTP_USERNAME=you@yourdomain.com
+      - SMTP_PASSWORD_FILE=/run/secrets/vaultwarden_smtp_password
+      - SHOW_PASSWORD_HINT=false
+      - LOGIN_RATELIMIT_SECONDS=60
+      - LOGIN_RATELIMIT_MAX_BURST=10
+      - ADMIN_RATELIMIT_SECONDS=300
+      - ADMIN_RATELIMIT_MAX_BURST=3
+      - PASSWORD_ITERATIONS=1000000    # PBKDF2 iterations (high = more secure)
+      - REQUIRE_DEVICE_EMAIL=true      # New device must be verified by email
+      - DISABLE_ICON_DOWNLOAD=true     # Prevent SSRF via favicon fetching
+      - DISABLE_2FA_REMEMBER=true      # Force 2FA on every login (no remember)
+      - ORG_EVENTS_ENABLED=true
+      - EXTENDED_LOGGING=true
+    volumes:
+      - /opt/homelab/vaultwarden/data:/data
+    networks:
+      - traefik
+      - vaultwarden-internal
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.vaultwarden.rule=Host(`passwords.yourdomain.com`)
+      - traefik.http.routers.vaultwarden.entrypoints=websecure
+      - traefik.http.routers.vaultwarden.tls.certresolver=letsencrypt
+      - traefik.http.services.vaultwarden.loadbalancer.server.port=80
+      # monitor-only: password manager — manual upgrade review recommended
+      - com.centurylinklabs.watchtower.enable=true
+      - com.centurylinklabs.watchtower.monitor-only=true
+
+secrets:
+  postgres_password:
+    file: /opt/homelab/secrets/postgres_password
+  vaultwarden_admin_token:
+    file: /opt/homelab/secrets/vaultwarden_admin_token
+  vaultwarden_smtp_password:
+    file: /opt/homelab/secrets/vaultwarden_smtp_password
+
+networks:
+  traefik:
+    external: true
+  vaultwarden-internal:
+    name: vaultwarden-internal
+    driver: bridge
+    internal: true

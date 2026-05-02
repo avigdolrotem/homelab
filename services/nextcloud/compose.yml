@@ -1,0 +1,79 @@
+name: nextcloud
+
+services:
+  nextcloud-db:
+    image: mariadb:10.5
+    container_name: nextcloud-db
+    restart: unless-stopped
+    secrets:
+      - mariadb_root_password
+      - mariadb_password
+    environment:
+      - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mariadb_root_password
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD_FILE=/run/secrets/mariadb_password
+    volumes:
+      - /opt/homelab/nextcloud/db:/var/lib/mysql
+    networks:
+      - nextcloud-internal
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    labels:
+      # monitor-only: Nextcloud major version upgrades require manual occ steps
+      - com.centurylinklabs.watchtower.enable=true
+      - com.centurylinklabs.watchtower.monitor-only=true
+
+  nextcloud:
+    image: nextcloud:32
+    container_name: nextcloud
+    restart: unless-stopped
+    depends_on:
+      nextcloud-db:
+        condition: service_healthy
+    secrets:
+      - mariadb_password
+    environment:
+      - MYSQL_HOST=nextcloud-db
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD_FILE=/run/secrets/mariadb_password
+    volumes:
+      - /opt/homelab/nextcloud/html:/var/www/html
+      - /opt/homelab/nextcloud/config:/var/www/html/config
+      - /opt/homelab/nextcloud/data:/var/www/html/data
+    networks:
+      - traefik
+      - nextcloud-internal
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.nextcloud.rule=Host(`cloud.yourdomain.com`)
+      - traefik.http.routers.nextcloud.entrypoints=websecure
+      - traefik.http.routers.nextcloud.tls.certresolver=letsencrypt
+      - traefik.http.services.nextcloud.loadbalancer.server.port=80
+      # CalDAV / CardDAV redirects (required for DAV clients to auto-discover)
+      - traefik.http.middlewares.nextcloud-redirectregex.redirectregex.permanent=true
+      - traefik.http.middlewares.nextcloud-redirectregex.redirectregex.regex=https://(.*)/.well-known/(?:card|cal)dav
+      - traefik.http.middlewares.nextcloud-redirectregex.redirectregex.replacement=https://$$1/remote.php/dav
+      - traefik.http.routers.nextcloud.middlewares=nextcloud-redirectregex@docker
+      # monitor-only: Nextcloud upgrades require occ maintenance steps
+      - com.centurylinklabs.watchtower.enable=true
+      - com.centurylinklabs.watchtower.monitor-only=true
+
+secrets:
+  mariadb_root_password:
+    file: /opt/homelab/secrets/mariadb_root_password
+  mariadb_password:
+    file: /opt/homelab/secrets/mariadb_password
+
+networks:
+  traefik:
+    external: true
+  nextcloud-internal:
+    name: nextcloud-internal
+    driver: bridge
+    internal: true   # DB unreachable from Traefik or other stacks

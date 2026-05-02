@@ -1,0 +1,155 @@
+name: traefik
+
+services:
+
+  # ── Docker socket proxy ─────────────────────────────────────────────────────
+  # Traefik only needs read access to container labels — expose nothing else.
+  # This prevents any container breakout from having full Docker API access.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: socket-proxy
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      EVENTS: 1
+      PING: 1
+      INFO: 1
+    networks:
+      - socket-proxy
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # ── Traefik ─────────────────────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3
+    container_name: traefik
+    restart: unless-stopped
+    depends_on:
+      - socket-proxy
+    secrets:
+      - traefik_users
+      - cloudflare_token
+    command:
+      # API / Dashboard
+      - --api=true
+      - --api.dashboard=true
+
+      # Entry points
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.websecure.address=:443
+
+      # Trust Cloudflare Tunnel, LAN, and Tailscale IPs as proxy sources
+      # Adjust subnets to match your network if needed
+      - --entrypoints.web.forwardedHeaders.trustedIPs=172.20.0.0/16,127.0.0.1/32,100.64.0.0/10,192.168.0.0/16
+      - --entrypoints.websecure.forwardedHeaders.trustedIPs=172.20.0.0/16,127.0.0.1/32,100.64.0.0/10,192.168.0.0/16
+
+      # Docker provider — via socket proxy, not raw socket
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik
+      - --providers.docker.endpoint=tcp://socket-proxy:2375
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+
+      # Let's Encrypt DNS challenge via Cloudflare
+      # DNS challenge means no port 80 inbound needed for cert issuance
+      - --certificatesresolvers.letsencrypt.acme.email=you@yourdomain.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge.propagation.delayBeforeChecks=10
+
+      # Enforce TLS 1.3 on all HTTPS traffic (defined in dynamic.yml)
+      - --entrypoints.websecure.http.tls.options=modern@file
+
+      # Logging
+      - --log.level=INFO
+      - --log.format=common
+      - --log.filePath=/var/log/traefik/traefik.log
+      - --accesslog=true
+      - --accesslog.format=common
+      - --accesslog.filepath=/var/log/traefik/access.log
+      - --accesslog.fields.names.StartUTC=drop
+
+    environment:
+      # Cloudflare API token — read from Docker secret file
+      - CF_DNS_API_TOKEN_FILE=/run/secrets/cloudflare_token
+
+    # Bind on all interfaces.
+    # If using Cloudflare Tunnel only (no direct port forwarding), you can
+    # restrict this to 127.0.0.1 or your LAN interface. See docs/architecture.md.
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - /opt/homelab/traefik/letsencrypt:/letsencrypt
+      - /opt/homelab/traefik/config:/etc/traefik/dynamic:ro
+      - /opt/homelab/traefik/logs:/var/log/traefik
+      - /etc/localtime:/etc/localtime:ro
+
+    networks:
+      - traefik
+      - socket-proxy
+
+    labels:
+      - traefik.enable=true
+      # Dashboard — protected by Authentik SSO
+      - traefik.http.routers.traefik.rule=Host(`traefik.yourdomain.com`)
+      - traefik.http.routers.traefik.entrypoints=websecure
+      - traefik.http.routers.traefik.tls.certresolver=letsencrypt
+      - traefik.http.routers.traefik.tls.domains[0].main=yourdomain.com
+      - traefik.http.routers.traefik.tls.domains[0].sans=*.yourdomain.com
+      - traefik.http.routers.traefik.service=api@internal
+      - traefik.http.routers.traefik.middlewares=authentik-auth@file,rate-limit@file
+      # Wildcard cert request (covers all subdomains in one cert)
+      - traefik.http.routers.wildcard-certs.tls.certresolver=letsencrypt
+      - traefik.http.routers.wildcard-certs.tls.domains[0].main=yourdomain.com
+      - traefik.http.routers.wildcard-certs.tls.domains[0].sans=*.yourdomain.com
+      - com.centurylinklabs.watchtower.enable=true
+
+  # ── Cloudflare Tunnel ───────────────────────────────────────────────────────
+  # Routes internet traffic into Traefik without any open ports on your router.
+  # Create a tunnel at dash.cloudflare.com → Zero Trust → Networks → Tunnels.
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflare-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    secrets:
+      - cloudflare_tunnel_token
+    environment:
+      - TUNNEL_TOKEN_FILE=/run/secrets/cloudflare_tunnel_token
+    networks:
+      - traefik
+    depends_on:
+      - traefik
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+secrets:
+  traefik_users:
+    file: /opt/homelab/secrets/traefik_users
+  cloudflare_token:
+    file: /opt/homelab/secrets/cloudflare_token
+  cloudflare_tunnel_token:
+    file: /opt/homelab/secrets/cloudflare_tunnel_token
+
+networks:
+  traefik:
+    name: traefik
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+        - subnet: fd00::/64
+  socket-proxy:
+    name: socket-proxy
+    driver: bridge
+    internal: true   # no internet access from this network

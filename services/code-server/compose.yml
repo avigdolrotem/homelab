@@ -1,0 +1,53 @@
+name: dev-environment
+
+services:
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    restart: unless-stopped
+    secrets:
+      - ide_password
+      - ide_sudo_password
+      - tailscale_authkey   # Remove if not using Tailscale inside the container
+    environment:
+      - PUID=501            # Match your host user UID (id -u)
+      - PGID=20             # Match your host user GID (id -g)
+      - TZ=Your/Timezone    # e.g. America/New_York, Europe/London
+      - FILE__PASSWORD=/run/secrets/ide_password
+      - FILE__SUDO_PASSWORD=/run/secrets/ide_sudo_password
+      - DEFAULT_WORKSPACE=/config/workspace
+    # NET_ADMIN + SYS_MODULE + /dev/net/tun are only needed if running
+    # Tailscale inside the container. Remove these if not using Tailscale.
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - /opt/homelab/code-server/config:/config
+      - /opt/homelab/code-server/workspace:/config/workspace
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.code-server.rule=Host(`ide.yourdomain.com`)
+      - traefik.http.routers.code-server.entrypoints=websecure
+      - traefik.http.routers.code-server.tls.certresolver=letsencrypt
+      # Authentik SSO — requires an active Authentik session to access
+      - traefik.http.routers.code-server.middlewares=authentik-auth@file
+      - traefik.http.services.code-server.loadbalancer.server.port=8443
+      # code-server serves HTTPS internally with a self-signed cert
+      - traefik.http.services.code-server.loadbalancer.serverstransport=skip-verify@file
+      - com.centurylinklabs.watchtower.enable=true
+
+secrets:
+  ide_password:
+    file: /opt/homelab/secrets/ide_password
+  ide_sudo_password:
+    file: /opt/homelab/secrets/ide_sudo_password
+  tailscale_authkey:
+    file: /opt/homelab/secrets/tailscale_authkey
+
+networks:
+  traefik:
+    external: true

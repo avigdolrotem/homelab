@@ -1,0 +1,69 @@
+name: librechat
+
+services:
+  librechat-mongodb:
+    image: mongo:7.0
+    container_name: librechat-mongodb
+    restart: unless-stopped
+    command: mongod --auth
+    volumes:
+      - /opt/homelab/librechat/db:/data/db
+    networks:
+      - librechat-internal
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+      - com.centurylinklabs.watchtower.monitor-only=true
+
+  # ── Local LLM (optional) ────────────────────────────────────────────────────
+  # Ollama runs models locally. Remove this service if you only use cloud APIs.
+  # To pull a model: docker exec -it ollama ollama pull llama3.1:8b
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - /opt/homelab/ollama/models:/root/.ollama
+    networks:
+      - librechat-internal
+    # No ports — reachable only by LibreChat on the internal network
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  librechat:
+    image: ghcr.io/danny-avila/librechat:latest
+    container_name: librechat
+    restart: unless-stopped
+    depends_on:
+      librechat-mongodb:
+        condition: service_healthy
+    env_file:
+      - /opt/homelab/librechat/config/librechat.env
+    volumes:
+      - /opt/homelab/librechat/data:/app/client/public/images
+      - /opt/homelab/librechat/uploads:/app/uploads
+      - /opt/homelab/librechat/logs:/app/logs
+      - /opt/homelab/librechat/config/librechat.yaml:/app/librechat.yaml:ro
+    networks:
+      - traefik
+      - librechat-internal
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.librechat.rule=Host(`ai.yourdomain.com`)
+      - traefik.http.routers.librechat.entrypoints=websecure
+      - traefik.http.routers.librechat.tls.certresolver=letsencrypt
+      - traefik.http.services.librechat.loadbalancer.server.port=3080
+      - com.centurylinklabs.watchtower.enable=true
+
+networks:
+  traefik:
+    external: true
+  librechat-internal:
+    name: librechat-internal
+    driver: bridge
+    internal: true   # MongoDB and Ollama unreachable from outside this stack

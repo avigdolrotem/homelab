@@ -1,0 +1,33 @@
+# ── Secrets & env files ──────────────────────────────────────────────────────
+# Never commit actual secrets or populated env files.
+# Only *.env.example files are tracked.
+*.env
+!*.env.example
+secrets/
+
+# ── Service data directories ─────────────────────────────────────────────────
+**/db/
+**/data/
+**/media/
+**/logs/
+**/letsencrypt/
+**/certs/
+**/html/
+**/uploads/
+
+# ── Populated config files (contain secrets) ─────────────────────────────────
+**/config/authentik.env
+**/config/librechat.env
+**/config/vaultwarden.env
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.Spotlight-V100
+.Trashes
+._*
+
+# ── Editor ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
