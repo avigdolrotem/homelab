@@ -115,7 +115,10 @@ homelab/
 └── scripts/
     ├── start.sh                # Start all services in order
     ├── stop.sh                 # Stop all services in reverse order
-    └── generate-secrets.sh     # Generate all secrets
+    ├── generate-secrets.sh     # Generate all secrets
+    ├── backup.sh               # Nightly DB dumps + rclone sync to encrypted cloud
+    ├── restore.sh              # Pull from cloud and restart services
+    └── com.homelab.backup.plist  # macOS launchd schedule (runs backup.sh at 02:00)
 ```
 
 ---
@@ -139,6 +142,26 @@ homelab/
 - Subdomains use `yourdomain.com` as a placeholder — replace throughout.
 - All secrets are stored as individual files in `secrets/` (Docker secrets pattern). The directory is gitignored.
 - Watchtower runs weekly (Sunday 03:00) and sends email reports. Services with schema migrations (`nextcloud`, `vaultwarden-db`) are set to monitor-only.
+
+---
+
+## Backup
+
+Two strategies are included — see [docs/backup.md](docs/backup.md) for full setup.
+
+**Option A — rsync to a local drive or NAS** (simplest, no extra tools):
+```bash
+rsync -av --delete \
+  --exclude='services/nextcloud/db/' --exclude='services/vaultwarden/db/' \
+  --exclude='services/ollama/models/' --exclude='backup/' \
+  /opt/homelab/ /Volumes/Backup/homelab/
+```
+
+**Option B — encrypted cloud backup via rclone** (`scripts/backup.sh`):
+- Dumps all databases live from running containers (MariaDB, PostgreSQL, MongoDB)
+- Syncs everything to an encrypted Google Drive remote (`rclone crypt`)
+- Retains DB dumps locally for 7 days, remotely for 30
+- Runs nightly at 02:00 via launchd (`com.homelab.backup.plist`) or cron
 
 ---
 
