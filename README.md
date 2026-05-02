@@ -134,6 +134,7 @@ homelab/
 
 ## Notes
 
+- Tested on a **Mac Mini M4 (Apple Silicon / ARM)** running Docker Desktop. Works on Linux with Docker Engine. The Tor Browser container requires `platform: linux/amd64` and runs via Rosetta on ARM — everything else is native.
 - Paths in compose files use `/opt/homelab` as the base data directory. Change this to wherever your data lives.
 - Subdomains use `yourdomain.com` as a placeholder — replace throughout.
 - All secrets are stored as individual files in `secrets/` (Docker secrets pattern). The directory is gitignored.
