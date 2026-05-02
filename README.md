@@ -147,19 +147,10 @@ homelab/
 
 ## Backup
 
-Two strategies are included — see [docs/backup.md](docs/backup.md) for full setup.
+`scripts/backup.sh` runs nightly and backs up everything automatically — see [docs/backup.md](docs/backup.md) for full setup.
 
-**Option A — rsync to a local drive or NAS** (simplest, no extra tools):
-```bash
-rsync -av --delete \
-  --exclude='services/nextcloud/db/' --exclude='services/vaultwarden/db/' \
-  --exclude='services/ollama/models/' --exclude='backup/' \
-  /opt/homelab/ /Volumes/Backup/homelab/
-```
-
-**Option B — encrypted cloud backup via rclone** (`scripts/backup.sh`):
 - Dumps all databases live from running containers (MariaDB, PostgreSQL, MongoDB)
-- Syncs everything to an encrypted Google Drive remote (`rclone crypt`)
+- Syncs everything to an encrypted Google Drive remote via `rclone crypt` (Google cannot read your files)
 - Retains DB dumps locally for 7 days, remotely for 30
 - Runs nightly at 02:00 via launchd (`com.homelab.backup.plist`) or cron
 
