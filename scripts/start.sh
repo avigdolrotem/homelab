@@ -17,7 +17,6 @@ start traefik       # creates the traefik network; includes cloudflared
 start authentik     # SSO — needs traefik network
 start nextcloud
 start vaultwarden
-start librechat     # includes ollama
 start code-server
 start watchtower    # last: begins monitoring all other containers
 echo "=== All services started ==="

@@ -14,7 +14,6 @@ stop() {
 echo "=== Stopping services ==="
 stop watchtower
 stop code-server
-stop librechat     # includes ollama
 stop vaultwarden
 stop nextcloud
 stop authentik
